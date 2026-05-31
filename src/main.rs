@@ -34,12 +34,12 @@ struct Args {
     /// 接続するMattermostサーバのアドレス
     #[arg(long, default_value_t=String::from("https://mm.digicre.net"))]
     server_addr: String,
-    /// Botアカウントではなく、あなたのアカウントで操作を実行します。DM送信も。IDとパスワードでログインできるので楽です。
-    #[arg(long)]
-    with_my_account: bool,
     /// メールアドレスのドメインを指定する
     #[arg(long, default_value_t=String::from("shibaura-it.ac.jp"))]
     domain: String,
+    /// Botアカウントではなく、あなたのアカウントで操作を実行します。DM送信も。IDとパスワードでログインできるので楽です。
+    #[arg(long)]
+    with_my_account: bool,
 }
 
 #[tokio::main]
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let me = mattermost::get_my_info(&api)
         .await
         .expect("ログイン中のユーザ情報の取得に失敗しました。");
-    println!("ログイン中のユーザー情報: {:#?}", me);
+    println!("ログイン中のユーザー情報: {me:#?}");
     println!("ユーザー一覧を取得します。\n");
 
     let users = mattermost::fetch_all_active_users(&api)
@@ -106,7 +106,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .with_page_size(20)
             .prompt()?;
             println!("\n--------------------------------------------------");
-            suspend_list.iter().for_each(|u| println!("{:#?}", u));
+            for u in &suspend_list {
+                println!("{u:#?}");
+            }
             if Confirm::new("以上のアカウントを選択しますか？")
                 .with_default(false)
                 .prompt()?
@@ -120,7 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .filter(|user| {
             // 上のpartitionにおける条件から、"@<ドメイン>"で終わることが保証されているので、email内に"@"を含むことが保証できる
-            let (student_number, _) = user.email.split_once("@").unwrap();
+            let (student_number, _) = user.email.split_once('@').unwrap();
             // メールアドレスを"@"で2つに分割したうち先頭の方(ユーザー名, 大学のメールアドレスであれば学籍番号と同一)が、
             // active_student_numbersに含まれてい"ない"ユーザを抽出する。
             !active_student_numbers.contains(student_number)
@@ -135,7 +137,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_page_size(20)
         .prompt()?;
         println!("\n--------------------------------------------------");
-        suspend_list.iter().for_each(|u| println!("{}", u));
+        for u in &suspend_list {
+            println!("{u}");
+        }
         if Confirm::new("以上のアカウントを選択しますか？")
             .with_default(false)
             .prompt()?
@@ -145,15 +149,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     println!("\n--------------------------------------------------\n");
     println!("無効化対象者の一覧\n");
-    suspend_list.iter().for_each(|u| {
+    for u in &suspend_list {
         println!(
             "ユーザー名: {}, ニックネーム: {}, 学籍番号?: {}",
             u.username,
             u.nickname,
             // abnormalに、まともなメールアドレスを持っていないユーザが存在する可能性を捨て切れない
-            u.email.split_once("@").unwrap_or(("None", "")).0
-        )
-    });
+            u.email.split_once('@').unwrap_or(("None", "")).0
+        );
+    }
 
     if args.dm {
         println!("\nDM送信を実行します。");
@@ -180,16 +184,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     body.channel_id = channel.id;
                     if let Err(e) = api.create_post(&body).await {
                         eprintln!("------------------------");
-                        eprintln!("{:?}", e);
-                        eprintln!("{}へのDM送信に失敗しました。", user);
+                        eprintln!("{e:?}");
+                        eprintln!("{user}へのDM送信に失敗しました。");
                     }
                 }
                 Err(e) => {
                     eprintln!("------------------------");
-                    eprintln!("{:?}", e);
-                    eprintln!("{}とのDMチャンネルの作成, IDの取得に失敗しました。", user);
+                    eprintln!("{e:?}");
+                    eprintln!("{user}とのDMチャンネルの作成, IDの取得に失敗しました。");
                 }
-            };
+            }
         }
     } else {
         println!("\nアカウント無効化処理を実行します。");
@@ -202,8 +206,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for user in suspend_list {
             if let Err(e) = mattermost::set_user_inactive(&api, &user.id).await {
                 eprintln!("-----------------------------");
-                eprintln!("{:?}", e);
-                eprintln!("{}の無効化に失敗しました。", user);
+                eprintln!("{e:?}");
+                eprintln!("{user}の無効化に失敗しました。");
             }
         }
     }

@@ -16,16 +16,16 @@ pub fn load_active_students(file_path: &Path) -> Result<HashSet<String>, std::io
                 r
             } else {
                 // ここも下記のunreachableと同じ理由でunreachableです(読む側が見る順番を考えないカスのコメント)
-                unreachable!("不正な行を検出しました。 {:?}", r);
+                unreachable!("不正な行を検出しました。 {r:?}");
             }
         })
         // active_limitが本日以降の日付であれば、有効な部員に含める
         .filter(|r| {
-            match NaiveDate::parse_from_str(&r.active_limit, "%Y-%m-%d") {
-                Ok(date) => date >= today,
+            NaiveDate::parse_from_str(&r.active_limit, "%Y-%m-%d").map_or_else(
                 // そんなわけない(DBから持ってきているため、手動でCSVをいじらないかぎり、上記のフォーマットに従うはず)
-                Err(_) => unreachable!("日付文字列のパースエラー: {}", r.active_limit),
-            }
+                |_| unreachable!("日付文字列のパースエラー: {}", r.active_limit),
+                |date| today <= date,
+            )
         })
         // これ以降active_limitを保持する必要がないので、student_numberのみを抽出
         .map(|u| u.student_number)

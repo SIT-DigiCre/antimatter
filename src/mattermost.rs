@@ -1,4 +1,4 @@
-use futures::{TryStreamExt, stream};
+use futures::{TryStreamExt as _, stream};
 use mattermost_api::{client::Mattermost, errors::ApiError};
 use serde::Serialize;
 
@@ -32,7 +32,7 @@ pub async fn get_my_info(api: &Mattermost) -> Result<models::MMUser, ApiError> {
     api.query("GET", "users/me", None, None).await
 }
 
-pub async fn get_or_create_dm_channel_id<T: AsRef<str> + Serialize>(
+pub async fn get_or_create_dm_channel_id<T: AsRef<str> + Serialize + Sync>(
     api: &Mattermost,
     ids: &[T; 2],
 ) -> Result<models::Channel, ApiError> {
@@ -47,6 +47,6 @@ pub async fn get_or_create_dm_channel_id<T: AsRef<str> + Serialize>(
 }
 
 pub async fn set_user_inactive(api: &Mattermost, id: &str) -> Result<(), ApiError> {
-    api.query("DELETE", format!("users/{}", id).as_str(), None, None)
+    api.query("DELETE", format!("users/{id}").as_str(), None, None)
         .await
 }
