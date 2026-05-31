@@ -19,15 +19,15 @@ struct Args {
     input_csv: PathBuf,
     #[arg(
         long,
-        help_heading = "dry-runモード",
-        help = "dry-runモードを使用する\n実際のアカウント無効化を実行せずに、DMにて該当者への告知を行う"
+        help_heading = "告知モード",
+        help = "告知モードで実行します。アカウント無効化を実行せずに、DMにて該当者への告知を行うモードです。"
     )]
     dm: bool,
     /// DMに送信する文面。改行はがんばってください。
     #[arg(
         long,
         requires = "dm",
-        help_heading = "dry-runモード",
+        help_heading = "告知モード",
         default_value_t = String::from("これはテスト用文字列です。正式に文章が確定したら置き換えてください。")
     )]
     dm_text: String,
@@ -37,6 +37,9 @@ struct Args {
     /// Botアカウントではなく、あなたのアカウントで操作を実行します。DM送信も。IDとパスワードでログインできるので楽です。
     #[arg(long)]
     with_my_account: bool,
+    /// メールアドレスのドメインを指定する
+    #[arg(long, default_value_t=String::from("shibaura-it.ac.jp"))]
+    domain: String,
 }
 
 #[tokio::main]
@@ -83,14 +86,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .expect("ユーザ一覧の取得に失敗しました。");
 
     println!("ユーザ一覧を取得しました。");
-    // emailの文字列が"@shibaura-it.ac.jp"で終わるかどうかで、normalとabnormalに分ける。
+    let domain_s = format!("@{}", args.domain);
+    // emailの文字列が"@<ドメイン>"で終わるかどうかで、normalとabnormalに分ける。
     let (normal_users, abnormal_users): (Vec<_>, _) = users
         .into_iter()
-        .partition(|u| u.email.ends_with("@shibaura-it.ac.jp"));
+        .partition(|u| u.email.ends_with(&domain_s));
 
     let mut suspend_list = Vec::new();
     if !abnormal_users.is_empty() {
-        println!("shibaura-it.ac.jp以外のドメインで登録しているユーザが存在します。\n");
+        println!(
+            "{}以外のドメインで登録しているユーザが存在します。\n",
+            args.domain
+        );
         suspend_list.extend(loop {
             let suspend_list = MultiSelect::new(
                 "この中に無効化すべきアカウントが存在する場合、選択してください。",
@@ -112,7 +119,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let suspend_list_norm = normal_users
         .into_iter()
         .filter(|user| {
-            // 上のpartitionにおける条件から、"@shibaura-it.ac.jp"で終わることが保証されているので、email内に"@"を含むことが保証できる
+            // 上のpartitionにおける条件から、"@<ドメイン>"で終わることが保証されているので、email内に"@"を含むことが保証できる
             let (student_number, _) = user.email.split_once("@").unwrap();
             // メールアドレスを"@"で2つに分割したうち先頭の方(ユーザー名, 大学のメールアドレスであれば学籍番号と同一)が、
             // active_student_numbersに含まれてい"ない"ユーザを抽出する。
@@ -168,16 +175,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         };
         for user in suspend_list {
             let ids = [&me.id, &user.id];
-            if let Ok(channel) = mattermost::get_or_create_dm_channel_id(&api, &ids).await {
-                body.channel_id = channel.id;
-                if api.create_post(&body).await.is_err() {
-                    eprintln!("------------------------");
-                    eprintln!("{}へのDM送信に失敗しました。", user);
+            match mattermost::get_or_create_dm_channel_id(&api, &ids).await {
+                Ok(channel) => {
+                    body.channel_id = channel.id;
+                    if let Err(e) = api.create_post(&body).await {
+                        eprintln!("------------------------");
+                        eprintln!("{:?}", e);
+                        eprintln!("{}へのDM送信に失敗しました。", user);
+                    }
                 }
-            } else {
-                eprintln!("------------------------");
-                eprintln!("{}とのDMチャンネルの作成, IDの取得に失敗しました。", user);
-            }
+                Err(e) => {
+                    eprintln!("------------------------");
+                    eprintln!("{:?}", e);
+                    eprintln!("{}とのDMチャンネルの作成, IDの取得に失敗しました。", user);
+                }
+            };
         }
     } else {
         println!("\nアカウント無効化処理を実行します。");
@@ -188,8 +200,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
         for user in suspend_list {
-            if mattermost::set_user_inactive(&api, &user.id).await.is_err() {
+            if let Err(e) = mattermost::set_user_inactive(&api, &user.id).await {
                 eprintln!("-----------------------------");
+                eprintln!("{:?}", e);
                 eprintln!("{}の無効化に失敗しました。", user);
             }
         }
