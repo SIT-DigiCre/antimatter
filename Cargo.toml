@@ -1,0 +1,8 @@
+[package]
+name = "antimatter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mattermost_api = { version = "0.8.2", default-features = false, features = ["rustls", "rustls-native-certs", "ws-keep-alive"] }
+rpassword = "7.5.4"
