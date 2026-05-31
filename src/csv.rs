@@ -11,9 +11,9 @@ pub fn load_active_students(file_path: &Path) -> Result<HashSet<String>, std::io
     let today = Local::now().date_naive();
     Ok(reader
         .deserialize::<models::DBRecord>()
-        .filter_map(|r| {
+        .map(|r| {
             if let Ok(r) = r {
-                Some(r)
+                r
             } else {
                 // ここも下記のunreachableと同じ理由でunreachableです(読む側が見る順番を考えないカスのコメント)
                 unreachable!("不正な行を検出しました。 {:?}", r);
@@ -21,7 +21,7 @@ pub fn load_active_students(file_path: &Path) -> Result<HashSet<String>, std::io
         })
         // active_limitが本日以降の日付であれば、有効な部員に含める
         .filter(|r| {
-            match  NaiveDate::parse_from_str(&r.active_limit, "%Y-%m-%d") {
+            match NaiveDate::parse_from_str(&r.active_limit, "%Y-%m-%d") {
                 Ok(date) => date >= today,
                 // そんなわけない(DBから持ってきているため、手動でCSVをいじらないかぎり、上記のフォーマットに従うはず)
                 Err(_) => unreachable!("日付文字列のパースエラー: {}", r.active_limit),
@@ -32,4 +32,3 @@ pub fn load_active_students(file_path: &Path) -> Result<HashSet<String>, std::io
         // HashSetにすることで、containsの(平均)時間計算量をO(1)に
         .collect::<HashSet<_>>())
 }
-

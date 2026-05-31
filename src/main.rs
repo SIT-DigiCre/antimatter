@@ -1,15 +1,11 @@
-use mattermost_api::prelude::*;
-use std::{
-    error::Error,
-    io::{BufRead, Write, stdin, stdout}, path::PathBuf,
-};
 use clap::Parser;
+use inquire::{Confirm, MultiSelect, Password, Text};
+use mattermost_api::{models::PostBody, prelude::*};
+use std::{error::Error, path::PathBuf};
 
-use rpassword::read_password;
-
-mod models;
-mod mattermost;
 mod csv;
+mod mattermost;
+mod models;
 
 /// -----------------------------------------------
 /// デジクリ 退部者Mattermostアカウント無効化ツール
@@ -21,52 +17,70 @@ mod csv;
 struct Args {
     /// デジコアDBからダンプしてきた、部員データが格納されたCSVへのパス(README.mdを参照のこと)
     input_csv: PathBuf,
-    #[arg(long, help_heading = "dry-runモード", help="dry-runモードを使用する\n実際のアカウント無効化を実行せずに、DMにて該当者への告知を行う")]
+    #[arg(
+        long,
+        help_heading = "dry-runモード",
+        help = "dry-runモードを使用する\n実際のアカウント無効化を実行せずに、DMにて該当者への告知を行う"
+    )]
     dm: bool,
     /// DMに送信する文面。改行はがんばってください。
-    #[arg(long, help_heading = "dry-runモード", default_value="これはテスト用文字列です。正式に文章が確定したら置き換えてください。")]
+    #[arg(
+        long,
+        requires = "dm",
+        help_heading = "dry-runモード",
+        default_value_t = String::from("これはテスト用文字列です。正式に文章が確定したら置き換えてください。")
+    )]
     dm_text: String,
+    /// 接続するMattermostサーバのアドレス
+    #[arg(long, default_value_t=String::from("https://mm.digicre.net"))]
+    server_addr: String,
+    /// Botアカウントではなく、あなたのアカウントで操作を実行します。DM送信も。IDとパスワードでログインできるので楽です。
+    #[arg(long)]
+    with_my_account: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    let active_student_numbers = csv::load_active_students(
-        &args.input_csv
-    )?;
-    println!(
-        "CSVを読み込みました。
-有効な部員の総数は{}です。\n",
-        active_student_numbers.len()
-    );
+    let active_student_numbers = csv::load_active_students(&args.input_csv)?;
+    println!("CSVを読み込みました。");
+    println!("有効な部員の総数は{}です。\n", active_student_numbers.len());
 
-    let mut stdout = stdout().lock();
-    let mut stdin = stdin().lock();
+    let auth = if args.with_my_account {
+        let login_id = Text::new(
+            "操作を行うシステム管理者として、ユーザー名 または メールアドレスを入力してください: ",
+        )
+        .prompt()?;
 
-    print!("操作を行うシステム管理者として、ユーザー名 または メールアドレスを入力してください: ");
-    let _ = stdout.flush();
-    let mut login_id = String::new();
-    stdin
-        .read_line(&mut login_id)
-        .expect("IDの読み取りに失敗しました");
-    login_id = login_id.trim_end().to_string();
-    println!();
+        let password = Password::new("パスワードを入力してください:")
+            .with_display_mode(inquire::PasswordDisplayMode::Masked)
+            .without_confirmation()
+            .prompt()?;
 
-    print!("パスワードを入力してください: ");
-    let _ = stdout.flush();
-    let password = read_password().expect("パスワードの読み取りに失敗しました");
-    println!();
+        AuthenticationData::from_password(login_id, password)
+    } else {
+        AuthenticationData::from_access_token(
+            Password::new("アクセストークンを入力してください。")
+                .without_confirmation()
+                .prompt()?,
+        )
+    };
 
-    let auth = AuthenticationData::from_password(login_id, password);
-    let mut api = Mattermost::new("https://mm.digicre.net", auth)?;
-    api.store_session_token().await?;
+    let mut api = Mattermost::new(args.server_addr, auth)?;
+    if args.with_my_account {
+        api.store_session_token().await?;
+    }
 
-    println!(
-        "デジクリ Mattermostサーバへのセッションを確立しました。
-ユーザー一覧を取得します。\n"
-    );
+    println!("\nMattermostサーバとのセッションを確立しました。");
+    let me = mattermost::get_my_info(&api)
+        .await
+        .expect("ログイン中のユーザ情報の取得に失敗しました。");
+    println!("ログイン中のユーザー情報: {:#?}", me);
+    println!("ユーザー一覧を取得します。\n");
 
-    let users = mattermost::fetch_all_active_users(&api).await.expect("ユーザ一覧の取得に失敗しました。");
+    let users = mattermost::fetch_all_active_users(&api)
+        .await
+        .expect("ユーザ一覧の取得に失敗しました。");
 
     println!("ユーザ一覧を取得しました。");
     // emailの文字列が"@shibaura-it.ac.jp"で終わるかどうかで、normalとabnormalに分ける。
@@ -74,16 +88,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .partition(|u| u.email.ends_with("@shibaura-it.ac.jp"));
 
+    let mut suspend_list = Vec::new();
     if !abnormal_users.is_empty() {
-        println!("@shibaura-it.ac.jp以外のドメインで登録しているユーザの一覧を表示します。\n");
-        abnormal_users.iter().for_each(|u| println!("{:?}", u));
-        // 後で、それぞれのアカウントについて個別に削除するか確認する画面でも用意する？
-        // というか、printlnでこれをやるのはあんまりなぁ…
-        println!("管理画面等で、個別に対応を行ってください。\n");
+        println!("shibaura-it.ac.jp以外のドメインで登録しているユーザが存在します。\n");
+        suspend_list.extend(loop {
+            let suspend_list = MultiSelect::new(
+                "この中に無効化すべきアカウントが存在する場合、選択してください。",
+                abnormal_users.clone(),
+            )
+            .with_page_size(20)
+            .prompt()?;
+            println!("\n--------------------------------------------------");
+            suspend_list.iter().for_each(|u| println!("{:#?}", u));
+            if Confirm::new("以上のアカウントを選択しますか？")
+                .with_default(false)
+                .prompt()?
+            {
+                break suspend_list;
+            }
+        });
     }
 
-    let suspend_list = normal_users
-        .iter()
+    let suspend_list_norm = normal_users
+        .into_iter()
         .filter(|user| {
             // 上のpartitionにおける条件から、"@shibaura-it.ac.jp"で終わることが保証されているので、email内に"@"を含むことが保証できる
             let (student_number, _) = user.email.split_once("@").unwrap();
@@ -92,17 +119,80 @@ async fn main() -> Result<(), Box<dyn Error>> {
             !active_student_numbers.contains(student_number)
         })
         .collect::<Vec<_>>();
+    suspend_list.extend(loop {
+        let suspend_list = MultiSelect::new(
+            "無効化すべきでないアカウントが存在する場合、チェックを外してください。",
+            suspend_list_norm.clone(),
+        )
+        .with_default(&(0..suspend_list_norm.len()).collect::<Vec<_>>())
+        .with_page_size(20)
+        .prompt()?;
+        println!("\n--------------------------------------------------");
+        suspend_list.iter().for_each(|u| println!("{}", u));
+        if Confirm::new("以上のアカウントを選択しますか？")
+            .with_default(false)
+            .prompt()?
+        {
+            break suspend_list;
+        }
+    });
+    println!("\n--------------------------------------------------\n");
     println!("無効化対象者の一覧\n");
     suspend_list.iter().for_each(|u| {
         println!(
-            "ユーザー名: {}, ニックネーム: {}, 学籍番号: {}",
+            "ユーザー名: {}, ニックネーム: {}, 学籍番号?: {}",
             u.username,
             u.nickname,
-            u.email.split_once("@").unwrap().0
+            // abnormalに、まともなメールアドレスを持っていないユーザが存在する可能性を捨て切れない
+            u.email.split_once("@").unwrap_or(("None", "")).0
         )
     });
-    println!("実行しますか？(y/n): ");
-    let _= stdout.flush();
 
+    if args.dm {
+        println!("\nDM送信を実行します。");
+        if args.with_my_account {
+            println!("!!Botアカウント(トークン)を利用せずに実行しています!!");
+            println!("!!あなたのアカウントでDMを送信することになります!!");
+        }
+        if !Confirm::new("続行しますか？")
+            .with_default(false)
+            .prompt()?
+        {
+            return Ok(());
+        }
+
+        let mut body = PostBody {
+            channel_id: "a".into(),
+            message: args.dm_text,
+            root_id: None,
+        };
+        for user in suspend_list {
+            let ids = [&me.id, &user.id];
+            if let Ok(channel) = mattermost::get_or_create_dm_channel_id(&api, &ids).await {
+                body.channel_id = channel.id;
+                if api.create_post(&body).await.is_err() {
+                    eprintln!("------------------------");
+                    eprintln!("{}へのDM送信に失敗しました。", user);
+                }
+            } else {
+                eprintln!("------------------------");
+                eprintln!("{}とのDMチャンネルの作成, IDの取得に失敗しました。", user);
+            }
+        }
+    } else {
+        println!("\nアカウント無効化処理を実行します。");
+        if !Confirm::new("続行しますか？")
+            .with_default(false)
+            .prompt()?
+        {
+            return Ok(());
+        }
+        for user in suspend_list {
+            if mattermost::set_user_inactive(&api, &user.id).await.is_err() {
+                eprintln!("-----------------------------");
+                eprintln!("{}の無効化に失敗しました。", user);
+            }
+        }
+    }
     Ok(())
 }
