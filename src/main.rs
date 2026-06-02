@@ -1,7 +1,10 @@
 use clap::Parser;
 use inquire::{Confirm, MultiSelect, Password, Text};
+use itertools::Itertools;
 use mattermost_api::{models::PostBody, prelude::*};
 use std::{error::Error, path::PathBuf};
+
+use crate::models::MMUser;
 
 mod csv;
 mod mattermost;
@@ -48,6 +51,19 @@ struct Args {
     with_my_account: bool,
 }
 
+fn filter_users(users: Vec<MMUser>, domain: &str) -> (Vec<MMUser>, Vec<MMUser>, Vec<MMUser>) {
+    // Botアカウントの類については、emailが@localhostになっているのでそれを見る
+    let (bots, users): (Vec<_>, _) = users
+        .into_iter()
+        .partition(|u| u.email.ends_with("@localhost"));
+
+    // emailの文字列が"@<ドメイン>"で終わるかどうかで、normalとabnormalに分ける。
+    let (normal_users, abnormal_users): (Vec<_>, _) =
+        users.into_iter().partition(|u| u.email.ends_with(domain));
+
+    (bots, normal_users, abnormal_users)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
@@ -92,17 +108,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .expect("ユーザ一覧の取得に失敗しました。");
 
     println!("ユーザ一覧を取得しました。");
-    let domain_s = format!("@{}", args.domain);
-    // emailの文字列が"@<ドメイン>"で終わるかどうかで、normalとabnormalに分ける。
-    let (normal_users, abnormal_users): (Vec<_>, _) = users
-        .into_iter()
-        .partition(|u| u.email.ends_with(&domain_s));
+    let domain = format!("@{}", args.domain);
 
-    // Botアカウントの類については、emailが@localhostになっているのでそれを見てabnormal_usersから除外してあげる
-    let abnormal_users = abnormal_users
-        .into_iter()
-        .filter(|u| !u.email.ends_with("@localhost"))
-        .collect::<Vec<_>>();
+    let (bots, normal_users, abnormal_users) = filter_users(users, &domain);
+
+    if !bots.is_empty() {
+        println!(
+            "\n以下のアカウントについては、メールアドレスのドメインがlocalhostであるため除外します。\n"
+        );
+        println!("{}", bots.iter().format("\n"));
+        println!("\n---------------------------------------------------");
+    }
 
     let mut suspend_list = Vec::new();
     if !abnormal_users.is_empty() {
