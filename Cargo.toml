@@ -13,3 +13,4 @@ mattermost_api = { version = "0.8.2", default-features = false, features = ["rus
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 tokio = "1.52.3"
+unicode-width = "0.2.2"

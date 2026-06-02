@@ -1,6 +1,7 @@
 use std::fmt;
 
 use serde::Deserialize;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
@@ -13,10 +14,15 @@ pub struct MMUser {
 }
 impl fmt::Display for MMUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn pad(s: &String, len: usize) -> String {
+            s.to_owned() + &" ".repeat(len.saturating_sub(s.width_cjk()))
+        }
         write!(
             f,
-            "ID: {}, ユーザー名: {}, ニックネーム: {}, メールアドレス: {}",
-            self.id, self.username, self.nickname, self.email
+            "ユーザー名: {}, ニックネーム: {}, メールアドレス: {}",
+            pad(&self.username, 25),
+            pad(&self.nickname, 20),
+            pad(&self.email, 20),
         )
     }
 }
