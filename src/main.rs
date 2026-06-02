@@ -28,7 +28,13 @@ struct Args {
         long,
         requires = "dm",
         help_heading = "告知モード",
-        default_value_t = String::from("これはテスト用文字列です。正式に文章が確定したら置き換えてください。")
+        default_value_t = String::from("
+# 【デジクリ】退部処理のお知らせ
+
+※このDMは、現在デジクリへの在籍が確認できない方に送信しています。
+デジクリ　インフラ担当です。
+このDMを受け取った方につきましては、6/9 0:00を持ちまして、Discordサーバ, Mattermostへのアクセス権を無効化させていただきます。
+何かご不明な点・異議申し立てがありましたら、[インフラサポートチケット](https://forms.gle/a1jWvcvosP6jAdfM9)、もしくはデジクリ メールアドレス(contact@digicre.net)までお知らせください。")
     )]
     dm_text: String,
     /// 接続するMattermostサーバのアドレス
@@ -159,8 +165,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
     }
 
+    println!("\n対象の総数: {}\n", suspend_list.len());
     if args.dm {
-        println!("\nDM送信を実行します。");
+        println!("DM送信を実行します。");
         if args.with_my_account {
             println!("!!Botアカウント(トークン)を利用せずに実行しています!!");
             println!("!!あなたのアカウントでDMを送信することになります!!");
@@ -196,7 +203,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        println!("\nアカウント無効化処理を実行します。");
+        println!("アカウント無効化処理を実行します。");
         if !Confirm::new("続行しますか？")
             .with_default(false)
             .prompt()?
