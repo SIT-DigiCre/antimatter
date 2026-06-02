@@ -52,7 +52,7 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let active_student_numbers = csv::load_active_students(&args.input_csv)?;
-    println!("CSVを読み込みました。");
+    println!("\nCSVを読み込みました。\n");
     println!("有効な部員の総数は{}です。\n", active_student_numbers.len());
 
     let auth = if args.with_my_account {
@@ -80,11 +80,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         api.store_session_token().await?;
     }
 
-    println!("\nMattermostサーバとのセッションを確立しました。");
+    println!("\nMattermostサーバとのセッションを確立しました。\n");
     let me = mattermost::get_my_info(&api)
         .await
         .expect("ログイン中のユーザ情報の取得に失敗しました。");
-    println!("ログイン中のユーザー情報: {me:#?}");
+    println!("ログイン中のユーザー情報: {me:#?}\n");
     println!("ユーザー一覧を取得します。\n");
 
     let users = mattermost::fetch_all_active_users(&api)
@@ -97,6 +97,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (normal_users, abnormal_users): (Vec<_>, _) = users
         .into_iter()
         .partition(|u| u.email.ends_with(&domain_s));
+
+    // Botアカウントの類については、emailが@localhostになっているのでそれを見てabnormal_usersから除外してあげる
+    let abnormal_users = abnormal_users
+        .into_iter()
+        .filter(|u| !u.email.ends_with("@localhost"))
+        .collect::<Vec<_>>();
 
     let mut suspend_list = Vec::new();
     if !abnormal_users.is_empty() {
