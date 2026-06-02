@@ -1,11 +1,11 @@
-use futures::{TryStreamExt as _, stream};
+use futures::{StreamExt as _, TryStreamExt as _, stream};
 use mattermost_api::{client::Mattermost, errors::ApiError};
 use serde::Serialize;
 
 use crate::models;
 
 pub async fn fetch_all_active_users(api: &Mattermost) -> Result<Vec<models::MMUser>, ApiError> {
-    Ok(stream::try_unfold(0, move |page| async move {
+    stream::try_unfold(0, |page| async move {
         let page_s = page.to_string();
         let params = [
             ("page", page_s.as_str()),
@@ -18,14 +18,12 @@ pub async fn fetch_all_active_users(api: &Mattermost) -> Result<Vec<models::MMUs
         if res.is_empty() {
             Ok::<_, ApiError>(None)
         } else {
-            Ok(Some((res, page + 1)))
+            Ok(Some((stream::iter(res).map(Ok), page + 1)))
         }
     })
-    .try_collect::<Vec<Vec<_>>>()
-    .await?
-    .into_iter()
-    .flatten()
-    .collect())
+    .try_flatten()
+    .try_collect()
+    .await
 }
 
 pub async fn get_my_info(api: &Mattermost) -> Result<models::MMUser, ApiError> {
