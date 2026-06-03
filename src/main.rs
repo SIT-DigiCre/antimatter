@@ -36,8 +36,8 @@ struct Args {
 
 ※このDMは、現在デジクリへの在籍が確認できない方に送信しています。
 デジクリ　インフラ担当です。
-このDMを受け取った方につきましては、6/9 0:00を持ちまして、Discordサーバ, Mattermostへのアクセス権を無効化させていただきます。
-何かご不明な点・異議申し立てがありましたら、[インフラサポートチケット](https://forms.gle/a1jWvcvosP6jAdfM9)、もしくはデジクリ メールアドレス(contact@digicre.net)までお知らせください。")
+このDMを受け取った方につきましては、6/9 0:00をもちまして、Discordサーバ, Mattermostへのアクセス権を無効化させていただきます。
+何かご不明な点・異議申し立てがございましたら、[インフラサポートチケット](https://forms.gle/a1jWvcvosP6jAdfM9)、もしくはデジクリ メールアドレス(contact@digicre.net)までお知らせください。")
     )]
     dm_text: String,
     /// 接続するMattermostサーバのアドレス
