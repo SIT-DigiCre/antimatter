@@ -1,8 +1,8 @@
 use clap::Parser;
 use inquire::{Confirm, MultiSelect, Password, Text};
-use itertools::Itertools;
+use itertools::Itertools as _;
 use mattermost_api::{models::PostBody, prelude::*};
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashSet, error::Error, path::PathBuf};
 
 use crate::models::MMUser;
 
@@ -155,19 +155,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
             // active_student_numbersに含まれてい"ない"ユーザを抽出する。
             !active_student_numbers.contains(student_number)
         })
-        .collect::<Vec<_>>();
+        .collect_vec();
     suspend_list.extend(loop {
         let suspend_list = MultiSelect::new(
             "無効化すべきでないアカウントが存在する場合、チェックを外してください。",
             suspend_list_norm.clone(),
         )
-        .with_default(&(0..suspend_list_norm.len()).collect::<Vec<_>>())
+        .with_default(&(0..suspend_list_norm.len()).collect_vec())
         .with_page_size(20)
         .prompt()?;
-        println!("\n--------------------------------------------------");
-        for u in &suspend_list {
-            println!("{u}");
+
+        // 逆に、チェックを外したアカウントがあるか確認する
+        let suspend_set = suspend_list.iter().map(|u| &u.id).collect::<HashSet<_>>();
+        let unselected = suspend_list_norm
+            .iter()
+            .filter(|u| !suspend_set.contains(&u.id))
+            .collect_vec();
+
+        println!();
+        if !unselected.is_empty() {
+            println!("--------------------------------------------------");
+            println!("{}", unselected.iter().format("\n"));
+            println!("以上のアカウントが対象から除外されました。");
+            let _ = Text::new("Enterを押して次へ…").prompt();
         }
+        println!("--------------------------------------------------");
+        println!("{}", suspend_list.iter().format("\n"));
         if Confirm::new("以上のアカウントを選択しますか？")
             .with_default(false)
             .prompt()?
@@ -207,8 +220,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             root_id: None,
         };
         for user in suspend_list {
-            let ids = [&me.id, &user.id];
-            match mattermost::get_or_create_dm_channel_id(&api, &ids).await {
+            let ids = (&me.id, &user.id);
+            match mattermost::get_dm_channel(&api, ids).await {
                 Ok(channel) => {
                     body.channel_id = channel.id;
                     if let Err(e) = api.create_post(&body).await {

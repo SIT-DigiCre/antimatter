@@ -1,10 +1,10 @@
-use std::fmt;
+use std::fmt::{self, Write as _};
 
 use serde::Deserialize;
-use unicode_width::UnicodeWidthStr;
+use unicode_width::UnicodeWidthStr as _;
 
 #[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
+#[expect(unused)]
 pub struct MMUser {
     pub id: String,
     pub username: String,
@@ -14,15 +14,24 @@ pub struct MMUser {
 }
 impl fmt::Display for MMUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn pad(s: &String, len: usize) -> String {
-            s.to_owned() + &" ".repeat(len.saturating_sub(s.width_cjk()))
+        struct Pad<'a>(&'a str, usize);
+        impl fmt::Display for Pad<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let width = self.0.width_cjk();
+                let padding = self.1.saturating_sub(width);
+                f.write_str(self.0)?;
+                for _ in 0..padding {
+                    f.write_char(' ')?;
+                }
+                Ok(())
+            }
         }
         write!(
             f,
             "ユーザー名: {}, ニックネーム: {}, メールアドレス: {}",
-            pad(&self.username, 25),
-            pad(&self.nickname, 20),
-            pad(&self.email, 20),
+            Pad(&self.username, 25),
+            Pad(&self.nickname, 20),
+            Pad(&self.email, 20),
         )
     }
 }

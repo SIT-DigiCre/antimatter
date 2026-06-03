@@ -30,16 +30,16 @@ pub async fn get_my_info(api: &Mattermost) -> Result<models::MMUser, ApiError> {
     api.query("GET", "users/me", None, None).await
 }
 
-pub async fn get_or_create_dm_channel_id<T: AsRef<str> + Serialize + Sync>(
+pub async fn get_dm_channel<T: Serialize>(
     api: &Mattermost,
-    ids: &[T; 2],
+    ids: (T, T),
 ) -> Result<models::Channel, ApiError> {
     // to_stringは確実に成功するとみなせそう
     api.query(
         "POST",
         "channels/direct",
         None,
-        Some(&serde_json::to_string(ids).unwrap()),
+        Some(&serde_json::to_string(&ids).unwrap()),
     )
     .await
 }
