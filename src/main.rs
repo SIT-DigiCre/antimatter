@@ -246,10 +246,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
         for user in suspend_list {
-            if let Err(e) = mattermost::set_user_inactive(&api, &user.id).await {
-                eprintln!("-----------------------------");
-                eprintln!("{e:?}");
-                eprintln!("{user}の無効化に失敗しました。");
+            match mattermost::set_user_inactive(&api, &user.id).await {
+                Ok(res) => {
+                    println!("{}: {}", user, res.status);
+                }
+                Err(e) => {
+                    eprintln!("-----------------------------");
+                    eprintln!("{e:?}");
+                    eprintln!("{user}の無効化に失敗しました。");
+                }
             }
         }
     }

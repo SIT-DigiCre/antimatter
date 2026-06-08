@@ -44,7 +44,10 @@ pub async fn get_dm_channel<T: Serialize>(
     .await
 }
 
-pub async fn set_user_inactive(api: &Mattermost, id: &str) -> Result<(), ApiError> {
+pub async fn set_user_inactive(
+    api: &Mattermost,
+    id: &str,
+) -> Result<models::DeactivateResponse, ApiError> {
     api.query("DELETE", format!("users/{id}").as_str(), None, None)
         .await
 }

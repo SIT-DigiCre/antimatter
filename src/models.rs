@@ -46,3 +46,8 @@ pub struct DBRecord {
     pub active_limit: String,
     pub student_number: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct DeactivateResponse {
+    pub status: String,
+}
